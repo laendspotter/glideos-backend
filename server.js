@@ -26,7 +26,7 @@ let regToHex = new Map(); // registration (uppercase) -> hex_id (uppercase)
 async function loadOgnDdb() {
   console.log("[DDB] Lade OGN Device Database...");
   try {
-    const res = await fetch("http://ddb.glidernet.org/download/?j=1&t=1");
+    const res = await fetch("https://ddb.glidernet.org/download/?j=1&t=1");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
 
