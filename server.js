@@ -14,12 +14,8 @@ const OGN_PORT = 14580;
 const APP_NAME = "GliderTracker";
 const APP_VERSION = "1.0";
 
-// ─────────────────────────────────────────────
-// OGN Device Database (RAM-Cache)
-// CSV Format: 'F','0123BC','LS-4','D-KXXX','WA','Y','Y'
-// ─────────────────────────────────────────────
-let deviceDb = new Map(); // hexId -> { registration, cn, model }
-let regToHex = new Map(); // registration/cn -> hexId
+let deviceDb = new Map();
+let regToHex = new Map();
 
 function parseDdbCsv(text) {
   let count = 0;
@@ -30,7 +26,6 @@ function parseDdbCsv(text) {
     const t = line.trim();
     if (!t || t.startsWith("#")) continue;
 
-    // Format: 'TYPE','HEXID','MODEL','REG','CN','TRACKED','IDENTIFIED'
     const parts = t.split(",").map(p => p.replace(/'/g, "").trim());
     if (parts.length < 4) continue;
 
@@ -54,8 +49,8 @@ async function loadOgnDdb(attempt = 1) {
   console.log(`[DDB] Laden... (Versuch ${attempt})`);
 
   const endpoints = [
-    "http://ddb.glidernet.org/download/",          // CSV (primär)
-    "http://ddb.glidernet.org/download/?t=1",      // CSV filtered
+    "http://ddb.glidernet.org/download/",
+    "http://ddb.glidernet.org/download/?t=1",
   ];
 
   for (const url of endpoints) {
@@ -87,9 +82,6 @@ async function loadOgnDdb(attempt = 1) {
 loadOgnDdb();
 setInterval(loadOgnDdb, 6 * 60 * 60 * 1000);
 
-// ─────────────────────────────────────────────
-// Lookup
-// ─────────────────────────────────────────────
 function resolveToHexIds(registrations) {
   const hexIds = new Set();
   for (const reg of registrations) {
@@ -101,9 +93,6 @@ function resolveToHexIds(registrations) {
   return hexIds;
 }
 
-// ─────────────────────────────────────────────
-// APRS Parser
-// ─────────────────────────────────────────────
 function parseAprsPacket(raw) {
   try {
     const callsignMatch = raw.match(/^([^>]+)>/);
@@ -135,9 +124,6 @@ function parseAprsPacket(raw) {
   } catch { return null; }
 }
 
-// ─────────────────────────────────────────────
-// HTTP + WebSocket Server
-// ─────────────────────────────────────────────
 const httpServer = http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
@@ -150,7 +136,7 @@ const httpServer = http.createServer((req, res) => {
 });
 
 const wss = new WebSocketServer({ server: httpServer });
-const clientSubscriptions = new Map(); // ws -> Set<hexId>
+const clientSubscriptions = new Map();
 
 wss.on("connection", (ws) => {
   console.log(`[WS] +1 client (${wss.clients.size} total)`);
@@ -189,9 +175,6 @@ function broadcastPosition(pos) {
   }
 }
 
-// ─────────────────────────────────────────────
-// OGN APRS TCP
-// ─────────────────────────────────────────────
 let aprsSocket = null;
 let aprsBuffer = "";
 let reconnectTimer = null;
@@ -204,9 +187,8 @@ function connectToOgn() {
 
   aprsSocket.connect(OGN_PORT, OGN_HOST, () => {
     console.log("[OGN] Verbunden!");
-aprsSocket.write(`user GLIDEOS pass 16519 vers GliderTracker 1.0 filter r/48.1/9.8/500\r\n`
-    );
-
+    aprsSocket.write(`user GLIDEOS pass 16519 vers GliderTracker 1.0 filter r/48.1/9.8/500\r\n`);
+  });
 
   aprsSocket.on("data", (data) => {
     aprsBuffer += data.toString("utf8");
