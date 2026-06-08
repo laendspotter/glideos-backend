@@ -14,6 +14,25 @@ const OGN_PORT = 14580;
 const APP_NAME = "GliderTracker";
 const APP_VERSION = "1.0";
 
+const GLIDER_PERFORMANCE = {
+  "K13": 27,
+  "ASK13": 27,
+  "ASK 13": 27,
+  "ASK21": 34,
+  "ASK 21": 34,
+  "LS4": 40,
+  "LS 4": 40,
+  "DISCUS": 42,
+  "DUO DISCUS": 45,
+  "ASW24": 43,
+  "ASW 24": 43,
+  "ASG29": 50,
+  "ASG 29": 50,
+  "VENTUS": 44,
+  "ARCUS": 50,
+  "DEFAULT": 30
+};
+
 let deviceDb = new Map();
 let regToHex = new Map();
 
@@ -46,7 +65,7 @@ function parseDdbCsv(text) {
 }
 
 async function loadOgnDdb(attempt = 1) {
-  console.log(`[DDB] Laden... (Versuch ${attempt})`);
+  console.log(`[DDB] Laden... (Versuch \${attempt})`);
 
   const endpoints = [
     "http://ddb.glidernet.org/download/",
@@ -55,27 +74,27 @@ async function loadOgnDdb(attempt = 1) {
 
   for (const url of endpoints) {
     try {
-      console.log(`[DDB] GET ${url}`);
+      console.log(`[DDB] GET \${url}`);
       const controller = new AbortController();
       const tid = setTimeout(() => controller.abort(), 25000);
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(tid);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(\`HTTP \${res.status}\`);
       const text = await res.text();
       if (!text || text.length < 100) throw new Error("Antwort zu kurz");
 
       const count = parseDdbCsv(text);
       if (count === 0) throw new Error("0 Eintraege geparst");
 
-      console.log(`[DDB] OK: ${count} Geraete geladen`);
+      console.log(`[DDB] OK: \${count} Geraete geladen`);
       return;
     } catch (err) {
-      console.error(`[DDB] Fehler (${url}): ${err.message}`);
+      console.error(`[DDB] Fehler (\${url}): \${err.message}`);
     }
   }
 
   const delay = Math.min(attempt * 30000, 300000);
-  console.error(`[DDB] Fehlgeschlagen. Retry in ${delay / 1000}s`);
+  console.error(`[DDB] Fehlgeschlagen. Retry in \${delay / 1000}s`);
   setTimeout(() => loadOgnDdb(attempt + 1), delay);
 }
 
@@ -102,7 +121,7 @@ function parseAprsPacket(raw) {
     if (!idMatch) return null;
     const hexId = idMatch[1].substring(2).toUpperCase();
 
-    const posMatch = raw.match(/(\d{2})(\d{2}\.\d{2})([NS])[\\/|](\d{3})(\d{2}\.\d{2})([EW])/);
+    const posMatch = raw.match(/(\\d{2})(\\d{2}\\.\\d{2})([NS])[\\\\/|](\\d{3})(\\d{2}\\.\\d{2})([EW])/);
     if (!posMatch) return null;
 
     let lat = parseInt(posMatch[1]) + parseFloat(posMatch[2]) / 60;
@@ -110,14 +129,14 @@ function parseAprsPacket(raw) {
     let lon = parseInt(posMatch[4]) + parseFloat(posMatch[5]) / 60;
     if (posMatch[6] === "W") lon = -lon;
 
-    const altMatch = raw.match(/A=(\d+)/);
+    const altMatch = raw.match(/A=(\\d+)/);
     const altM = altMatch ? Math.round(parseInt(altMatch[1]) * 0.3048) : null;
 
-    const csMatch = raw.match(/(\d{3})\/(\d{3})/);
+    const csMatch = raw.match(/(\\d{3})\/(\\d{3})/);
     const course  = csMatch ? parseInt(csMatch[1]) : null;
     const speedKmh = csMatch ? Math.round(parseInt(csMatch[2]) * 1.852) : null;
 
-    const varioMatch = raw.match(/([+-]\d+\.\d+)fpm/);
+    const varioMatch = raw.match(/([+-]\\d+\\.\\d+)fpm/);
     const varioMs = varioMatch ? Math.round(parseFloat(varioMatch[1]) * 0.00508 * 10) / 10 : null;
 
     return { hexId, lat, lon, altM, course, speedKmh, varioMs, ts: Date.now() };
@@ -139,7 +158,7 @@ const wss = new WebSocketServer({ server: httpServer });
 const clientSubscriptions = new Map();
 
 wss.on("connection", (ws) => {
-  console.log(`[WS] +1 client (${wss.clients.size} total)`);
+  console.log(\`[WS] +1 client (\${wss.clients.size} total)\`);
   clientSubscriptions.set(ws, new Set());
 
   ws.on("message", (raw) => {
@@ -157,7 +176,7 @@ wss.on("connection", (ws) => {
         });
 
         ws.send(JSON.stringify({ type: "subscribed", resolved, watching: hexIds.size }));
-        console.log(`[WS] subscribe: [${regs.join(", ")}] -> ${hexIds.size} hexIds`);
+        console.log(\`[WS] subscribe: [\${regs.join(", ")}] -> \${hexIds.size} hexIds\`);
       }
     } catch {}
   });
@@ -168,7 +187,23 @@ wss.on("connection", (ws) => {
 
 function broadcastPosition(pos) {
   const info = deviceDb.get(pos.hexId);
-  if (info) { pos.registration = info.registration; pos.cn = info.cn; pos.model = info.model; }
+  let gleitzahl = GLIDER_PERFORMANCE["DEFAULT"];
+
+  if (info) {
+    pos.registration = info.registration;
+    pos.cn = info.cn;
+    pos.model = info.model;
+
+    const rawModel = (info.model || "").toUpperCase().trim();
+    for (const [modelKey, glide] of Object.entries(GLIDER_PERFORMANCE)) {
+      if (modelKey !== "DEFAULT" && rawModel.includes(modelKey)) {
+        gleitzahl = glide;
+        break;
+      }
+    }
+  }
+  
+  pos.gleitzahl = gleitzahl;
   const payload = JSON.stringify({ type: "position", data: pos });
   for (const [ws, subs] of clientSubscriptions) {
     if (subs.has(pos.hexId) && ws.readyState === WebSocket.OPEN) ws.send(payload);
@@ -181,18 +216,18 @@ let reconnectTimer = null;
 
 function connectToOgn() {
   if (aprsSocket) { aprsSocket.destroy(); aprsSocket = null; }
-  console.log(`[OGN] Verbinde ${OGN_HOST}:${OGN_PORT}...`);
+  console.log(\`[OGN] Verbinde \${OGN_HOST}:\${OGN_PORT}...\`);
   aprsSocket = new net.Socket();
   aprsBuffer = "";
 
   aprsSocket.connect(OGN_PORT, OGN_HOST, () => {
     console.log("[OGN] Verbunden!");
-    aprsSocket.write(`user GLIDEOS pass 16519 vers GliderTracker 1.0 filter r/48.1/9.8/500\r\n`);
+    aprsSocket.write(\`user GLIDEOS pass 16519 vers GliderTracker 1.0 filter r/48.1/9.8/500\\r\\n\`);
   });
 
   aprsSocket.on("data", (data) => {
     aprsBuffer += data.toString("utf8");
-    const lines = aprsBuffer.split("\n");
+    const lines = aprsBuffer.split("\\n");
     aprsBuffer = lines.pop();
     for (const line of lines) {
       const t = line.trim();
@@ -206,7 +241,7 @@ function connectToOgn() {
   aprsSocket.on("close", () => { console.log("[OGN] getrennt"); scheduleReconnect(); });
 
   const ka = setInterval(() => {
-    if (aprsSocket && !aprsSocket.destroyed) aprsSocket.write("#keepalive\r\n");
+    if (aprsSocket && !aprsSocket.destroyed) aprsSocket.write("#keepalive\\r\\n");
     else clearInterval(ka);
   }, 2 * 60 * 1000);
 }
@@ -216,5 +251,5 @@ function scheduleReconnect(delay = 5000) {
   reconnectTimer = setTimeout(() => { reconnectTimer = null; connectToOgn(); }, delay);
 }
 
-httpServer.listen(PORT, () => { console.log(`[Server] Port ${PORT}`); connectToOgn(); });
+httpServer.listen(PORT, () => { console.log(\`[Server] Port \${PORT}\`); connectToOgn(); });
 process.on("SIGTERM", () => { if (aprsSocket) aprsSocket.destroy(); httpServer.close(); wss.close(); });
