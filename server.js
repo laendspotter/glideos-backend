@@ -256,7 +256,7 @@ function connectToOgn() {
 
   aprsSocket.connect(OGN_PORT, OGN_HOST, () => {
     console.log("[OGN] Verbunden!");
-    aprsSocket.write(`user GLIDEOS pass 16519 vers GliderTracker 1.0 filter r/48.1/9.8/500\r\n`);
+    aprsSocket.write(`user GLIDEOS pass 27557 vers GliderTracker 1.0 filter r/48.1/9.8/500\r\n`);
   });
 
   aprsSocket.on("data", (data) => {
